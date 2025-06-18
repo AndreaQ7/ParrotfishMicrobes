@@ -69,4 +69,41 @@ print(conf_matrix)
 
 # Compute accuracy
 accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
+# Plot error rates for both models
+plot(rf_model$err.rate[, 1], type = "l", col = "blue", lwd = 2, 
+     xlab = "Number of Trees", ylab = "Error Rate", 
+     main = "Random Forest Error Rate Comparison")
+lines(rf_model2$err.rate[, 1], col = "red", lwd = 2)
+legend("topright", legend = c("Model 1", "Model 2"), 
+       col = c("blue", "red"), lty = 1, lwd = 2)
+       
+
+
+# Extract class error and accuracy from both models
+class_error1 <- rf_model$confusion[, "class.error"]
+class_error2 <- rf_model2$confusion[, "class.error"]
+
+# Convert to accuracy (% correct classification)
+accuracy1 <- (1 - class_error1) * 100
+accuracy2 <- (1 - class_error2) * 100
+
+# Create a data frame for plotting
+comparison_df <- data.frame(
+  Habits = rownames(rf_model$confusion),
+  Accuracy_Model1 = accuracy1,
+  Accuracy_Model2 = accuracy2,
+  Error_Model1 = class_error1 * 100,
+  Error_Model2 = class_error2 * 100
+accuracy_long <- reshape2::melt(comparison_df, id.vars = "Habits", 
+                                measure.vars = c("Accuracy_Model1", "Accuracy_Model2"),
+                                variable.name = "Model", value.name = "Accuracy")
+
+# Plot
+ggplot(accuracy_long, aes(x = Habits, y = Accuracy, fill = Model)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Comparison of Correct Assignments (%)", 
+       x = "Habits Category", y = "Correct Assignments (%)") +
+  theme_minimal() +
+  scale_fill_manual(values = c("blue", "red")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
