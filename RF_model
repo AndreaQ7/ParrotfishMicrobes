@@ -1,0 +1,72 @@
+
+#RF on Taxonomy
+library(randomForest)
+library(tidyverse)
+
+tax_table_mod <- as.data.frame(tax_table(genus2.rect))
+original_taxa_names <- rownames(tax_table_mod)
+dup_genus <- tax_table_mod$Genus[duplicated(tax_table_mod$Genus) | duplicated(tax_table_mod$Genus, fromLast = TRUE)]
+tax_table_mod$Genus <- ifelse(tax_table_mod$Genus %in% dup_genus, 
+                              paste(tax_table_mod$Family, tax_table_mod$Genus, sep = "_"), 
+                              tax_table_mod$Genus)
+new_genus_names <- make.unique(tax_table_mod$Genus)
+rownames(tax_table_mod) <- new_genus_names
+taxa_names(genus2.rect)<-tax_table_mod$Genus
+otu_table_df <- as.data.frame(otu_table(genus2.rect))
+
+metadata_df <- sample_data(genus2.rect) %>% as.data.frame()
+metadata_df$Habits <- as.factor(metadata_df$Habits)
+otu_table_df <- otu_table_df[rownames(metadata_df), ]  # Ensure rows match
+
+final_df <- cbind(metadata_df$Habits, otu_table_df)
+colnames(final_df)[1] <- "Habits"
+
+train_index <- sample(seq_len(nrow(final_df)), size = 0.7 * nrow(final_df))  # 70% train
+
+
+train_data <- final_df[train_index, ]
+test_data  <- final_df[-train_index, ]
+colnames(train_data) <- make.names(colnames(train_data))
+colnames(test_data) <- make.names(colnames(test_data))
+
+rf_model <- randomForest(Habits ~ ., data = train_data, ntree = 1000, importance = TRUE)
+print(rf_model)
+
+predictions <- predict(rf_model, test_data)
+
+# Confusion matrix
+conf_matrix <- table(Predicted = predictions, Actual = test_data$Habits)
+print(conf_matrix)
+
+# Compute accuracy
+accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
+
+
+#RF on function
+metacyc_abundance<-read.delim("path_abun_unstrat.tsv/path_abun_unstrat.tsv")
+names(metacyc_abundance) <- gsub("^X", "", names(metacyc_abundance))
+
+metacyc_abundance2 <- metacyc_abundance %>%
+    mutate(across(-pathway, ~ . / sum(.) * 100))
+metacyc_abundance2 <- metacyc_abundance2 %>%
+  mutate(across(-pathway, as.numeric))
+    
+metacyc_abundance2<-data.frame(t(metacyc_abundance2))
+colnames(metacyc_abundance)<-metacyc_abundance[1,]
+metacyc_abundance2<-metacyc_abundance2[-1,]
+metacyc_abundance2$Habits<-metadata$Habits
+
+colnames(metacyc_abundance2) <- make.names(colnames(metacyc_abundance2))
+metacyc_abundance2$Habits <- as.factor(metacyc_abundance2$Habits)
+rf_model2 <- randomForest(Habits ~ ., data = metacyc_abundance2, ntree = 1000, importance = TRUE)
+print(rf_model2)
+
+predictions <- predict(rf_model2, test_data)
+
+# Confusion matrix
+conf_matrix <- table(Predicted = predictions, Actual = test_data$Habits)
+print(conf_matrix)
+
+# Compute accuracy
+accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
+
