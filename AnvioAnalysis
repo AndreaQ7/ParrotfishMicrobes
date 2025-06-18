@@ -1,0 +1,37 @@
+#contigs creation and mapping
+R1s=`ls output_mioscript/final_output/*final_R1* | python -c 'import sys; print(",".join([x.strip() for x in sys.stdin.readlines()]))'`
+R2s=`ls output_mioscript/final_output/*final_R2* | python -c 'import sys; print(",".join([x.strip() for x in sys.stdin.readlines()]))'`
+
+
+megahit -1 $R1s -2 $R2s --min-contig-len 1000 -m 0.85 -o anvio/output_megahit -t 40
+
+cd anvio
+mkdir contigs
+anvi-script-reformat-fasta output_megahit/final.contigs.fa -o contigs/contigs.fa -l 1000 --simplify-names --report name_conversions.txt
+
+mkdir mapping
+
+bowtie2-build contigs/contigs.fa mapping/contigs
+
+anvi-gen-contigs-database -f contigs/contigs.fa -o contigs.db -n 'CONTIG DB Parrotfishes'
+
+for file in ../output_mioscript/final_output/*_R1*;
+do filename=$(basename "$file" _R1.fastq.gz);
+echo ${filename};
+bowtie2 --threads 40 -x mapping/contigs -1 ../output_mioscript/final_output/${filename}_R1.fastq.gz -2 ../output_mioscript/final_output/${filename}_R2.fastq.gz -S mapping/${filename}.sam;
+samtools view -F 4 -bS mapping/${filename}.sam > mapping/${filename}-RAW.bam ;
+anvi-init-bam mapping/${filename}-RAW.bam -o mapping/${filename}.bam;
+rm mapping/${filename}.sam mapping/${filename}-RAW.bam;
+echo "Finito BAM"
+anvi-profile -i mapping/${filename}.bam -c ../anvio/contigs.db -o profile/"${filename}" -T 40 --cluster-contigs --profile-SCVs -M 500 --write-buffer-size 1000;
+done
+
+anvi-display-contigs-stats contigs.db --report-as-text -o ContigsStats.txt
+anvi-display-contigs-stats contigs.db --report-as-text --as-markdown -o ContigsStats.md
+
+anvi-merge profile/*/PROFILE.db -o profile/MERGED_Profile --enforce-hierarchical-clustering -c contigs.db
+anvi-estimate-metabolism -c contigs.db -p Profile.db --add-copy-number
+anvi-export-functions -c contigs.db -o functions.txt
+
+
+
