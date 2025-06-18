@@ -1,0 +1,71 @@
+library(phyloseq)
+library(Biostrings)
+library(ggtree)
+library(ggtreeExtra)
+library(ggnewscale)
+library(DECIPHER)
+library(phangorn)
+library(tidyverse)
+
+
+cyano=subset_taxa(ps.ext, Phylum=="Cyanobacteria")
+asv_seqs <- colnames(otu_table(cyano))  # ASV sono in colonna
+
+taxa <- tax_table(cyano)
+families <- taxa[, "Family"]
+
+fasta_names <- paste0(">", families[asv_seqs], "_", seq_along(asv_seqs))
+
+fasta_seqs <- DNAStringSet(asv_seqs)
+names(fasta_seqs) <- fasta_names
+seq_names <- names(fasta_seqs)seqs <- fasta_seqs
+
+# Alligning
+alignment <- AlignSeqs(seqs)
+
+phang_align <- phyDat(as(alignment, "matrix"), type = "DNA")
+
+#  Distance + NJ Tree
+dm <- dist.ml(phang_align)
+treeNJ <- NJ(dm)
+
+# Optimization with ML
+fit <- pml(treeNJ, data = phang_align)
+fitGTR <- optim.pml(fit, model = "GTR", rearrangement = "stochastic")    
+
+#Graphic
+library(ggtree)
+library(ggplot2)
+
+# Colors set
+asv_family <- data.frame(
+  asv = names(fasta_seqs),
+  Family = as.character(families[asv_seqs])
+)
+
+
+otu <- otu_table(cyano)
+otu_df <- as.data.frame(otu)
+otu_df$ASV <- rownames(otu_df)
+
+# Presence/absence of family within samples
+otu_presence <- colSums(otu > 0)  # numero campioni in cui è presente
+
+asv_family$Presence <- otu_presence[asv_seqs]
+
+# Add Family info at the tree
+library(RColorBrewer)
+colors_set2 <- brewer.pal(12, "Set3")
+colors_dark2 <- brewer.pal(8, "Dark2")
+colors_accent <- brewer.pal(8, "Accent")
+colors_pastel1 <- brewer.pal(8, "Pastel1")
+combined_colors <- c(colors_set2, colors_dark2,colors_accent)
+
+tree_plot <- ggtree(fitGTR$tree) %<+% asv_family +
+  geom_tippoint(aes(color = Family), size = 2) +
+  theme_tree2() +
+  labs(title = "Phylogenetic Tree of ASVs (colored by Family)") +
+  theme(legend.position = "right")+scale_color_manual(values=combined_colors)
+
+
+
