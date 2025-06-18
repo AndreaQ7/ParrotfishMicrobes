@@ -1,0 +1,36 @@
+#Creation of a model to estimate the influence of geographic distance over microbiome distance (estimated through BrayCurtis)
+## Mantel test
+library(geosphere)
+samdf<-read.delim("MetadataOralSamples.txt",header=T,sep="\t")
+metadatadf <- data.frame(samdf)
+sample <- sample_data(metadatadf)
+rownames(sample)<-sample$SampleID
+sample_data(genus2.oral)<-sample
+
+metadata <- as.data.frame(sample_data(genus2.oral))
+
+geo_dist_matrix <- distm(metadata[, c("Logitude", "Latitude")], fun = distHaversine) 
+geo_dist_matrix <- as.dist(geo_dist_matrix)  # Convert to 'dist' format
+microbiome_dist_matrix <- distance(genus2.oral, method = "bray")
+
+mantel_result <- mantel(geo_dist_matrix, microbiome_dist_matrix, method = "spearman", permutations = 999)
+print(mantel_result)
+
+##Decay Model
+library(ggplot2)
+
+geo_dist_vec <- as.vector(geo_dist_matrix)
+microbiome_dist_vec <- as.vector(microbiome_dist_matrix)
+
+decay_df <- data.frame(GeographicDistance = geo_dist_vec, MicrobiomeDistance = microbiome_dist_vec)
+
+decay_model <- lm(MicrobiomeDistance ~ GeographicDistance, data = decay_df)
+summary(decay_model)
+
+ggplot(decay_df, aes(x = GeographicDistance, y = MicrobiomeDistance)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", color = "blue") +
+  labs(title = "Distance Decay Relationship",
+       x = "Geographic Distance (km)",
+       y = "Microbiome Distance (Bray-Curtis)") +
+  theme_minimal()
