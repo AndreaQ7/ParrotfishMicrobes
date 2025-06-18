@@ -1,0 +1,149 @@
+library(phyloseq)
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+library(tidyverse)
+library(ranacapa)
+library(vegan)
+library(ggpubr)
+library(microViz)
+library(microbiome)
+
+load("PS_Uno.RData")
+ps.uno<-ps
+samdf<-read.delim("MappingUno.txt",header=T,sep="\t")
+metadatadf <- data.frame(samdf)
+sample <- sample_data(metadatadf)
+rownames(sample)<-sample$SampleID
+sample_data(ps.uno)<-sample
+
+id<-c("Fish","coral","water")
+
+ps.ext<-subset_samples(ps.uno,Type %in% id)
+
+#First beta-div
+genus=tax_glom(ps.fil2,taxrank="Genus")
+genus<-subset_samples(genus,!Name=="S23A")
+genus<-transform(genus, "compositional")
+genus2= prune_taxa(taxa_sums(genus) > 0, genus)
+ord <- ordinate(genus2, "PCoA", "bray")
+plot_ordination(genus2,ord,shape="Type",color = "Sample_Cat")+geom_point(size=7,alpha=0.75)+theme_classic()+ geom_text(mapping = aes(label = Name), size = 3,vjust=2)+geom_hline(yintercept=0,linetype="dashed",color="black")+geom_vline(xintercept=0,linetype="dashed",color="black")
+
+#Rectal Beta surgeonfish and parrot
+genus2.rect<-subset_samples(genus2, Sample_Cat =="Rectal")
+genus2.rect= prune_taxa(taxa_sums(genus2.rect) > 0, genus2.rect)
+ord.rect <- ordinate(genus2.rect, "PCoA", "bray")
+palette1 <- brewer.pal(9, "Set1")
+palette2 <- brewer.pal(10, "Set3")
+merged_palette <- c(palette1, palette2)
+plot_ordination(genus2.rect,ord.rect,color = "Species",shape="Habits")+geom_point(size=7,alpha=0.75)+theme_classic()+ geom_text(mapping = aes(label = Name), size = 3,vjust=2)+geom_hline(yintercept=0,linetype="dashed",color="black")+geom_vline(xintercept=0,linetype="dashed",color="black") +scale_color_manual(values=merged_palette)
+
+#Rectal Beta only parrot
+genus3.rect<-subset_samples(genus2.rect, Fishes =="Parrotfishes")
+genus3.rect= prune_taxa(taxa_sums(genus3.rect) > 0, genus3.rect)
+ord3.rect <- ordinate(genus3.rect, "PCoA", "bray")
+plot_ordination(genus3.rect,ord3.rect,color = "Area")+geom_point(size=7,alpha=0.75)+theme_classic()+ geom_text(mapping = aes(label = Name), size = 3,vjust=2)+geom_hline(yintercept=0,linetype="dashed",color="black")+geom_vline(xintercept=0,linetype="dashed",color="black")
+
+#Oral beta surgeonfish and parrot
+genus2.oral<-subset_samples(genus2, Sample_Cat =="Oral")
+genus2.oral= prune_taxa(taxa_sums(genus2.oral) > 0, genus2.oral)
+ord.oral <- ordinate(genus2.oral, "PCoA", "bray")
+plot_ordination(genus2.oral,ord.oral,color = "Fishes",shape="Habits")+geom_point(size=7,alpha=0.75)+theme_classic()+ geom_hline(yintercept=0,linetype="dashed",color="black")+geom_vline(xintercept=0,linetype="dashed",color="black") +scale_color_brewer(palette="Dark2")
+
+#Permanova
+library(vegan)
+sample_data_df <- as(sample_data(genus2.rect), "data.frame")
+
+bray_dist <- distance(genus2.rect , method = "bray")
+sample_data_df2 <- as(sample_data(genus2.rect ), "data.frame")
+adonis_result <- adonis2(bray_dist ~ Habits + Area + Species + Fishes , data = sample_data_df2)
+adonis_result_interaction <- adonis2(bray_dist ~ Habits* Area * Fishes* Species, data = sample_data_df2)
+ado<-adonis_result[-c(5,6),]
+ado<-as.data.frame(ado)
+ado$ID<-rownames(ado)
+ado$label <- ifelse(ado$ID %in% c("Sample_Cat", "Area"), "*", "")
+ggplot(ado, aes(reorder(ID, -R2), R2)) +
+  geom_bar(stat = "identity", fill = "lightblue", width = 0.54) +
+  geom_text(aes(label = label), hjust = -0.2, color = "red", size = 6) + 
+  theme_classic() +
+  coord_flip()+ylab("Permanova R2")+xlab("")
+
+sample_data_df <- as(sample_data(genus3.rect), "data.frame")
+bray_dist3 <- distance(genus3.rect , method = "bray")
+sample_data_df3 <- as(sample_data(genus3.rect ), "data.frame")
+adonis_result <- adonis2(bray_dist3 ~ Habits + Area + Species + bpm + erosion_rate + scar_vol , data = sample_data_df3) 
+adonis_result_interaction <- adonis2(bray_dist3 ~ Habits* Area * bpm* Species *erosion_rate *scar_vol, data = sample_data_df3)
+
+sample_data_df <- as(sample_data(genus3.oral), "data.frame")
+bray_dist3 <- distance(genus3.oral , method = "bray")
+sample_data_df3 <- as(sample_data(genus3.oral ), "data.frame")
+adonis_result <- adonis2(bray_dist3 ~ Habits + Area + Species + bpm + erosion_rate + scar_vol , data = sample_data_df3)  
+adonis_result_interaction <- adonis2(bray_dist3 ~ Habits* Area * bpm* Species *erosion_rate *scar_vol, data = sample_data_df3)
+
+#Alpha Div
+ps.ext.rect<-subset_samples(ps.ext,Sample_Cat=="Rectal")
+ps.ext.oral<-subset_samples(ps.ext,Sample_Cat=="Oral")
+
+p1=plot_richness(ps.exy.rect,x="Name",measures=c("Observed","Shannon")) +theme_bw()
+p2=plot_richness(ps.ext.oral,x="Name",measures=c("Observed","Shannon")) +theme_bw()
+a1<-p1$data
+a2<-p2$data
+
+library(ggpubr)
+ggboxplot(a1, x = "Fishes", y = "value",
+  color = "Fishes", palette = "npg", add = "jitter")+ facet_wrap(~variable,scale="free")+stat_compare_means()
+
+ggboxplot(a2, x = "Fishes", y = "value",
+  color = "Fishes", palette = "npg", add = "jitter")+ facet_wrap(~variable,scale="free")+stat_compare_means()
+
+#DESeq2 between parrot and surgeonfish at family level
+library("DESeq2")
+fam=tax_glom(ps.fil2,taxrank="Family")
+fam.rect<-subset_samples(fam,Sample_Cat=="Rectal")
+fam.oral<-subset_samples(fam,Sample_Cat=="Oral")
+fam.rect= prune_taxa(taxa_sums(fam.rect) > 0, fam.rect)
+fam.rect= subset_taxa(fam.rect,!Family=="Unknown Family")
+fam.oral= prune_taxa(taxa_sums(fam.oral) > 0, fam.oral)
+fam.oral= subset_taxa(fam.oral,!Family=="Unknown Family")
+
+tax_table_mod <- as.data.frame(tax_table(fam.rect))
+rownames(tax_table_mod) <- tax_table_mod$Family
+taxa_names(fam.rect)<-tax_table_mod$Family
+
+tax_table_mod <- as.data.frame(tax_table(fam.oral))
+rownames(tax_table_mod) <- tax_table_mod$Family
+taxa_names(fam.oral)<-tax_table_mod$Family
+#DESEQ rectal
+diagdds1 = phyloseq_to_deseq2(fam.rect, ~ Fishes)
+diagdds1 = DESeq(diagdds1, test="Wald", fitType="parametric")
+res1 = results(diagdds1, cooksCutoff = FALSE)
+alpha = 0.05
+sigtab1 = res1[which(res1$padj < alpha), ]
+sigtab1 = cbind(as(sigtab1, "data.frame"), as(tax_table(fam.rect)[rownames(sigtab1), ], "matrix")) 
+
+#DESEQ oral
+diagdds2 = phyloseq_to_deseq2(fam.oral, ~ Fishes)
+diagdds2 = DESeq(diagdds2, test="Wald", fitType="parametric")
+res2 = results(diagdds2, cooksCutoff = FALSE)
+alpha = 0.05
+sigtab2 = res2[which(res2$padj < alpha), ]
+sigtab2 = cbind(as(sigtab2, "data.frame"), as(tax_table(fam.oral)[rownames(sigtab2), ], "matrix")) 
+
+#plot rectal sign.
+id.rect1<-sigtab1$Family
+fam.rect.perc<-transform_sample_counts(fam.rect, function(x) 100 * x / sum(x))
+fam.rect.sign= subset_taxa(fam.rect.perc,Family %in% id.rect1)
+
+rect1.plot<-psmelt(fam.rect.sign)
+tiff("Rectal Family Acanthurus Parrot.tif",width = 3300,height = 2500,res=300)
+ggplot(rect1.plot,aes(Fishes,Abundance,fill=Fishes))+facet_wrap(~OTU,scales="free")+scale_fill_brewer(palette="Dark2")+
+geom_boxplot()+theme_classic()
+
+#plot oral sign.
+id.oral1<-sigtab2$Family
+fam.oral.perc<-transform_sample_counts(fam.oral, function(x) 100 * x / sum(x))
+fam.oral.sign= subset_taxa(fam.oral.perc,Family %in% id.oral1)
+
+oral1.plot<-psmelt(fam.oral.sign)
+ggplot(oral1.plot,aes(Fishes,Abundance,fill=Fishes))+facet_wrap(~OTU,scales="free")+scale_fill_brewer(palette="Dark2")+
+geom_boxplot()+theme_classic()
